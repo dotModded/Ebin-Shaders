@@ -127,17 +127,35 @@ bool ComputeRaytracedIntersection(vec3 startingViewPosition, vec3 rayDirection, 
 #include "/lib/Misc/Bias_Functions.glsl"
 #include "/lib/Fragment/Sunlight_Shading.fsh"
 
+float brdf(vec3 normal, vec3 outVector, vec3 inVector, float roughness) {
+	cfloat F0 = 0.15; // refractive Index
+	
+	float alpha = pow2(roughness);
+	float alpha2 = pow2(alpha);
+	float alphaCoeff = sqrt((2.0 * alpha2) / PI);
+	vec3 halfVector = (outVector + inVector) / length(outVector + inVector);
+	
+	float NoV = dot(normal, inVector);
+	float IoH = dot(inVector, halfVector);
+	float NoH = dot(normal, halfVector);
+
+	float fresnel = mix(pow(1.0 - IoH, 5.0), 1.0, F0); //Schlick
+	float geometryFactor = NoV / (NoV * (1.0 - alphaCoeff) + alphaCoeff); //Smith
+	float microFacet = alpha2 / (PI * pow2(1.0 + pow2(NoV) * (alpha2 - 1.0))); //GGX
+
+	return fresnel * geometryFactor * microFacet * IoH / (0.5 * NoH * NoV);
+}
+
 void ComputeReflectedLight(io vec3 color, mat2x3 position, vec3 normal, float smoothness, float skyLightmap) {
 	if (isEyeInWater == 1) return;
-	
-	float alpha = (pow2(min1(1.0 + dot(normalize(position[0]), normal))) * 0.99 + 0.01) * smoothness;
-	
-	if (length(alpha) < 0.005) return;
 	
 	mat2x3 refRay;
 	refRay[0] = reflect(position[0], normal);
 	refRay[1] = mat3(gbufferModelViewInverse) * refRay[0];
-	
+
+	float specularBRDF = brdf(normal, normalize(refRay[0]), -normalize(position[0]), smoothness);
+	if (specularBRDF < 0.05) return;
+
 	float firstStepSize = mix(1.0, 30.0, pow2(length(position[1].xz) / 144.0));
 	vec3  reflectedCoord;
 	vec3  reflectedViewSpacePosition;
@@ -164,7 +182,7 @@ void ComputeReflectedLight(io vec3 color, mat2x3 position, vec3 normal, float sm
 		#endif
 	}
 	
-	color = mix(color, reflection, alpha);
+	color = mix(color, reflection, specularBRDF);
 }
 
 #include "lib/Fragment/Water_Depth_Fog.fsh"

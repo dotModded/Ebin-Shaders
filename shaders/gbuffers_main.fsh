@@ -137,7 +137,7 @@ void main() {
 	
 	vec3 normal = GetNormal(coord);
 	
-	float specularity = GetSpecularity(coord) + wet;
+	float specularity = GetSpecularity(coord);
 	
 	
 #if !defined gbuffers_water
